@@ -132,6 +132,7 @@ var messages = [];
 var nextId = 1;
 var formVisible = false;
 var chatVisible = false;
+var editingId = null;
 
 // ========== PCC COLORS ==========
 var PCC_COLORS = {
@@ -164,25 +165,25 @@ var VISIT_LABELS = {
 // ========== STEP DEFINITIONS ==========
 function getStepNames(visitType, hasSM) {
     if (visitType === 'new_consult') {
-        return ['Checked in', 'Roomed', 'Consent signed', 'Vectra complete', 'Seen by Dr', 'Quote presented', 'Seen by Dr 2', 'Checkout'];
+        return ['Checked in', 'Roomed', 'Consent signed', 'Vectra complete', 'With Dr', 'Seen by Dr', 'Quote presented', 'With Dr 2', 'Seen by Dr 2', 'Checkout'];
     }
     if (visitType === 'pre_op') {
         if (hasSM) {
-            return ['Checked in', 'Roomed', 'Urine', 'Consent signed', 'Social media intro', 'Vectra complete', 'Cameras prepped', 'Seen by Dr (filmed)', 'Vectra', 'Prepped for OR', 'Dr informed', 'Cameras prepped', 'Dr take to OR (filmed)', 'Checkout'];
+            return ['Checked in', 'Roomed', 'Urine', 'Consent signed', 'Social media intro', 'Vectra complete', 'Cameras prepped', 'With Dr', 'Seen by Dr (filmed)', 'Vectra', 'Prepped for OR', 'Dr informed', 'Cameras prepped', 'Dr take to OR (filmed)', 'Checkout'];
         }
-        return ['Checked in', 'Roomed', 'Urine complete', 'Consent signed', 'Vectra complete', 'Seen by Dr', 'Vectra complete', 'Prepped for OR', 'Dr informed', 'PCC take to OR', 'Checkout'];
+        return ['Checked in', 'Roomed', 'Urine complete', 'Consent signed', 'Vectra complete', 'With Dr', 'Seen by Dr', 'Vectra complete', 'Prepped for OR', 'Dr informed', 'PCC take to OR', 'Checkout'];
     }
     if (visitType === 'next_day_post_op') {
         if (hasSM) {
-            return ['Checked in', 'Roomed', 'Cameras prepped', 'Dr unwrap (filmed)', 'Vectra', 'Cameras prepped', 'Dr (filmed)', 'Checkout'];
+            return ['Checked in', 'Roomed', 'Cameras prepped', 'Dr unwrap (filmed)', 'Vectra', 'Cameras prepped', 'With Dr', 'Dr (filmed)', 'Checkout'];
         }
-        return ['Checked in', 'Roomed', 'Dr unwrap', 'Vectra complete', 'Seen by Dr', 'Checkout'];
+        return ['Checked in', 'Roomed', 'Dr unwrap', 'Vectra complete', 'With Dr', 'Seen by Dr', 'Checkout'];
     }
     if (visitType === 'general_post_op') {
         if (hasSM) {
-            return ['Checked in', 'Roomed', 'Vectra', 'Cameras prepped', 'Seen by Dr (filmed)', 'Checkout'];
+            return ['Checked in', 'Roomed', 'Vectra', 'Cameras prepped', 'With Dr', 'Seen by Dr (filmed)', 'Checkout'];
         }
-        return ['Checked in', 'Roomed', 'Vectra complete', 'Seen by Dr', 'Checkout'];
+        return ['Checked in', 'Roomed', 'Vectra complete', 'With Dr', 'Seen by Dr', 'Checkout'];
     }
     return [];
 }
@@ -355,6 +356,111 @@ function updateNotes(patientId) {
     }
 }
 
+// ========== EDIT PATIENT ==========
+function startEdit(patientId) {
+    saveAllNotes();
+    editingId = patientId;
+    renderPatients();
+}
+
+function cancelEdit() {
+    editingId = null;
+    renderPatients();
+}
+
+function saveEdit(patientId) {
+    var p = findPatient(patientId);
+    if (!p) return;
+
+    var name = document.getElementById('e-name-' + patientId).value.trim();
+    var room = document.getElementById('e-room-' + patientId).value.trim();
+    var pcc = document.getElementById('e-pcc-' + patientId).value;
+    var visitType = document.getElementById('e-visit-' + patientId).value;
+    var hasSM = document.getElementById('e-social-' + patientId).value === 'yes';
+    var notes = document.getElementById('e-notes-' + patientId).value.trim();
+
+    if (!name) { alert('Please enter the patient name.'); return; }
+
+    var workflowChanged = (visitType !== p.visitType || hasSM !== p.socialMedia);
+
+    p.name = name;
+    p.initials = getInitials(name);
+    p.room = room;
+    p.pcc = pcc;
+    p.notes = notes;
+    p.visitType = visitType;
+    p.visitTypeLabel = VISIT_LABELS[visitType] || visitType;
+    p.socialMedia = hasSM;
+
+    if (workflowChanged) {
+        var stepNames = getStepNames(visitType, hasSM);
+        var steps = [];
+        for (var i = 0; i < stepNames.length; i++) {
+            steps.push({ name: stepNames[i], done: false });
+        }
+        p.steps = steps;
+        p.done = false;
+    }
+
+    editingId = null;
+    renderAll();
+}
+
+function renderEditForm(p) {
+    var html = '<div style="background:white;border-radius:10px;padding:14px;margin-bottom:10px;border:2px solid #F59E0B;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+    html += '<div style="font-size:18px;font-weight:700;margin-bottom:14px;color:#92400E;">Edit Patient</div>';
+
+    html += '<div style="margin-bottom:10px;">';
+    html += '<label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Full Name <span style="color:#C00;">*</span></label>';
+    html += '<input id="e-name-' + p.id + '" type="text" value="' + escapeHtml(p.name).replace(/"/g, '&quot;') + '" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;-webkit-appearance:none;">';
+    html += '</div>';
+
+    html += '<div style="margin-bottom:10px;">';
+    html += '<label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Room</label>';
+    html += '<input id="e-room-' + p.id + '" type="text" value="' + escapeHtml(p.room).replace(/"/g, '&quot;') + '" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;-webkit-appearance:none;">';
+    html += '</div>';
+
+    html += '<div style="margin-bottom:10px;">';
+    html += '<label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Assigned PCC</label>';
+    html += '<select id="e-pcc-' + p.id + '" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;-webkit-appearance:menulist;background:white;">';
+    var pccOpts = ['Unassigned', 'Naomi', 'Nicole', 'Elizabeth', 'Paloma'];
+    for (var i = 0; i < pccOpts.length; i++) {
+        html += '<option value="' + pccOpts[i] + '"' + (pccOpts[i] === p.pcc ? ' selected' : '') + '>' + pccOpts[i] + '</option>';
+    }
+    html += '</select></div>';
+
+    html += '<div style="margin-bottom:10px;">';
+    html += '<label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Visit Type <span style="color:#C00;">*</span></label>';
+    html += '<select id="e-visit-' + p.id + '" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;-webkit-appearance:menulist;background:white;">';
+    var vOpts = [{v:'new_consult',l:'New patient consult'},{v:'pre_op',l:'Pre-op'},{v:'next_day_post_op',l:'Next day post-op'},{v:'general_post_op',l:'General post-op'}];
+    for (var j = 0; j < vOpts.length; j++) {
+        html += '<option value="' + vOpts[j].v + '"' + (vOpts[j].v === p.visitType ? ' selected' : '') + '>' + vOpts[j].l + '</option>';
+    }
+    html += '</select></div>';
+
+    html += '<div style="margin-bottom:10px;">';
+    html += '<label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Social Media Consent</label>';
+    html += '<select id="e-social-' + p.id + '" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;-webkit-appearance:menulist;background:white;">';
+    html += '<option value="no"' + (!p.socialMedia ? ' selected' : '') + '>No social media</option>';
+    html += '<option value="yes"' + (p.socialMedia ? ' selected' : '') + '>Social media</option>';
+    html += '</select></div>';
+
+    html += '<div style="margin-bottom:14px;">';
+    html += '<label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Notes</label>';
+    html += '<textarea id="e-notes-' + p.id + '" rows="2" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;resize:vertical;font-family:inherit;-webkit-appearance:none;">' + escapeHtml(p.notes) + '</textarea>';
+    html += '</div>';
+
+    html += '<div style="font-size:14px;color:#92400E;margin-bottom:10px;padding:6px 10px;background:#FEF3C7;border-radius:6px;">Note: Changing visit type or social media will reset workflow steps.</div>';
+
+    html += '<div style="display:-webkit-flex;display:flex;">';
+    html += '<button onclick="saveEdit(' + p.id + ')" style="font-size:18px;padding:10px 24px;border-radius:8px;border:1px solid #2563EB;background:#2563EB;color:white;cursor:pointer;font-weight:600;margin-right:8px;-webkit-appearance:none;">Save Changes</button>';
+    html += '<button onclick="cancelEdit()" style="font-size:18px;padding:10px 24px;border-radius:8px;border:1px solid #DDD;background:#F8F8F8;cursor:pointer;-webkit-appearance:none;">Cancel</button>';
+    html += '</div>';
+
+    html += '</div>';
+    return html;
+}
+
 // ========== CHAT ACTIONS ==========
 function toggleChat() {
     chatVisible = !chatVisible;
@@ -464,6 +570,9 @@ function renderChat() {
 
 // ========== RENDER: PATIENT CARD ==========
 function renderCard(p) {
+    if (editingId === p.id) {
+        return renderEditForm(p);
+    }
     var pccColor = PCC_COLORS[p.pcc] || PCC_COLORS['Unassigned'];
     var opacity = p.done ? '0.4' : '1';
 
@@ -480,7 +589,9 @@ function renderCard(p) {
 
     // Room badge
     if (p.room) {
-        html += '<span style="font-size:16px;background:#F0F0F0;padding:2px 8px;border-radius:10px;margin-right:8px;">Rm ' + escapeHtml(p.room) + '</span>';
+        html += '<span style="font-size:14px;font-weight:700;background:#F0F0F0;padding:3px 10px;border-radius:10px;margin-right:8px;">ROOM ' + escapeHtml(p.room) + '</span>';
+    } else {
+        html += '<span style="font-size:14px;font-weight:700;background:#FEE2E2;color:#991B1B;padding:3px 10px;border-radius:10px;margin-right:8px;">ROOM UNASSIGNED</span>';
     }
 
     // Social media badge
@@ -526,6 +637,7 @@ function renderCard(p) {
     html += '<button onclick="toggleNotes(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #DDD;background:' + (p.showNotes ? '#E8E8E8' : '#F8F8F8') + ';cursor:pointer;-webkit-appearance:none;">Notes</button>';
 
     if (!p.done) {
+        html += '<button onclick="startEdit(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #FBBF24;background:#FEF3C7;color:#92400E;cursor:pointer;-webkit-appearance:none;">Edit</button>';
         html += '<button onclick="markDone(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #C3E6CB;background:#D4EDDA;color:#155724;cursor:pointer;-webkit-appearance:none;">Done</button>';
     }
 
