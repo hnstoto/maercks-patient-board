@@ -22,6 +22,12 @@ button, input, select, textarea {
 </head>
 <body>
 
+<!-- ===== HEADER ===== -->
+<div style="text-align:center;padding:8px 0 4px 0;margin-bottom:6px;">
+    <div style="font-size:20px;font-weight:700;color:#333;letter-spacing:0.5px;">Maercks Institute</div>
+    <div id="today-date" style="font-size:14px;color:#999;"></div>
+</div>
+
 <!-- ===== TOP BAR ===== -->
 <div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-flex-wrap:wrap;flex-wrap:wrap;background:white;border-radius:10px;padding:12px;margin-bottom:10px;border:1px solid #E8E8E8;">
     <button id="add-btn" onclick="toggleForm()" style="font-size:18px;padding:10px 20px;border-radius:8px;border:1px solid #2563EB;background:#2563EB;color:white;cursor:pointer;margin:3px;font-weight:600;-webkit-appearance:none;">+ Add Patient</button>
@@ -214,6 +220,17 @@ function formatTime(d) {
     return h + ':' + mStr + ampm;
 }
 
+function formatElapsed(timestamp) {
+    if (!timestamp) return '';
+    var diff = Math.floor((new Date() - timestamp) / 60000);
+    if (diff < 1) return 'just now';
+    if (diff < 60) return diff + 'm ago';
+    var hours = Math.floor(diff / 60);
+    var mins = diff % 60;
+    if (mins === 0) return hours + 'h ago';
+    return hours + 'h ' + mins + 'm ago';
+}
+
 function findPatient(id) {
     for (var i = 0; i < patients.length; i++) {
         if (patients[i].id === id) return patients[i];
@@ -290,7 +307,10 @@ function submitPatient() {
         notes: notes,
         steps: steps,
         done: false,
-        showNotes: false
+        showNotes: false,
+        showCompletedSteps: false,
+        showUpcomingSteps: false,
+        checkedInAt: new Date()
     });
 
     toggleForm();
@@ -356,6 +376,22 @@ function updateNotes(patientId) {
     }
 }
 
+function toggleCompletedSteps(patientId) {
+    var p = findPatient(patientId);
+    if (p) {
+        p.showCompletedSteps = !p.showCompletedSteps;
+        renderPatients();
+    }
+}
+
+function toggleUpcomingSteps(patientId) {
+    var p = findPatient(patientId);
+    if (p) {
+        p.showUpcomingSteps = !p.showUpcomingSteps;
+        renderPatients();
+    }
+}
+
 // ========== EDIT PATIENT ==========
 function startEdit(patientId) {
     saveAllNotes();
@@ -400,6 +436,8 @@ function saveEdit(patientId) {
         }
         p.steps = steps;
         p.done = false;
+        p.showCompletedSteps = false;
+        p.showUpcomingSteps = false;
     }
 
     editingId = null;
@@ -407,7 +445,8 @@ function saveEdit(patientId) {
 }
 
 function renderEditForm(p) {
-    var html = '<div style="background:white;border-radius:10px;padding:14px;margin-bottom:10px;border:2px solid #F59E0B;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+    var pccColor = PCC_COLORS[p.pcc] || PCC_COLORS['Unassigned'];
+    var html = '<div style="background:white;border-radius:10px;padding:14px;padding-left:18px;margin-bottom:10px;border:2px solid #F59E0B;border-left:5px solid ' + pccColor.text + ';box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
     html += '<div style="font-size:18px;font-weight:700;margin-bottom:14px;color:#92400E;">Edit Patient</div>';
 
     html += '<div style="margin-bottom:10px;">';
@@ -568,81 +607,167 @@ function renderChat() {
     el.scrollTop = el.scrollHeight;
 }
 
-// ========== RENDER: PATIENT CARD ==========
+// ========== RENDER: COMPLETED CARD (compact) ==========
+function renderCompletedCard(p) {
+    var pccColor = PCC_COLORS[p.pcc] || PCC_COLORS['Unassigned'];
+    var html = '<div style="background:white;border-radius:10px;padding:10px 14px 10px 18px;margin-bottom:6px;opacity:0.5;border:1px solid #E8E8E8;border-left:5px solid ' + pccColor.text + ';">';
+
+    html += '<div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-flex-wrap:wrap;flex-wrap:wrap;">';
+
+    html += '<div style="width:32px;height:32px;border-radius:16px;background:' + pccColor.bg + ';color:' + pccColor.text + ';display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;font-weight:700;font-size:13px;margin-right:8px;-webkit-flex-shrink:0;flex-shrink:0;">' + escapeHtml(p.initials) + '</div>';
+
+    html += '<span style="font-size:16px;font-weight:600;margin-right:8px;">' + escapeHtml(p.name) + '</span>';
+
+    if (p.room) {
+        html += '<span style="font-size:13px;background:#F0F0F0;padding:2px 8px;border-radius:10px;margin-right:6px;">ROOM ' + escapeHtml(p.room) + '</span>';
+    }
+
+    html += '<span style="font-size:13px;background:' + pccColor.bg + ';color:' + pccColor.text + ';padding:2px 8px;border-radius:10px;margin-right:6px;">' + escapeHtml(p.pcc) + '</span>';
+    html += '<span style="font-size:13px;color:#888;margin-right:6px;">' + escapeHtml(p.visitTypeLabel) + '</span>';
+    html += '<span style="font-size:13px;background:#D4EDDA;color:#155724;padding:2px 8px;border-radius:10px;">&#10003; Complete</span>';
+
+    html += '<span style="-webkit-flex:1;flex:1;"></span>';
+
+    html += '<button onclick="toggleNotes(' + p.id + ')" style="font-size:14px;padding:4px 10px;margin:2px;border-radius:6px;border:1px solid #DDD;background:#F8F8F8;color:#666;cursor:pointer;-webkit-appearance:none;">Notes</button>';
+    html += '<button onclick="removePatient(' + p.id + ')" style="font-size:14px;padding:4px 10px;margin:2px;border-radius:6px;border:1px solid #E8E8E8;background:white;color:#BBB;cursor:pointer;-webkit-appearance:none;">Remove</button>';
+
+    html += '</div>';
+
+    var notesDisplay = p.showNotes ? 'block' : 'none';
+    html += '<div id="notes-' + p.id + '" style="display:' + notesDisplay + ';margin-top:8px;">';
+    html += '<textarea id="notes-input-' + p.id + '" oninput="updateNotes(' + p.id + ')" placeholder="Add notes..." style="width:100%;padding:8px;font-size:14px;border:1px solid #DDD;border-radius:6px;resize:vertical;min-height:40px;font-family:inherit;-webkit-appearance:none;">' + escapeHtml(p.notes) + '</textarea>';
+    html += '</div>';
+
+    html += '</div>';
+    return html;
+}
+
+// ========== RENDER: ACTIVE PATIENT CARD ==========
 function renderCard(p) {
     if (editingId === p.id) {
         return renderEditForm(p);
     }
+    if (p.done) {
+        return renderCompletedCard(p);
+    }
+
     var pccColor = PCC_COLORS[p.pcc] || PCC_COLORS['Unassigned'];
-    var opacity = p.done ? '0.4' : '1';
 
-    var html = '<div style="background:white;border-radius:10px;padding:14px;margin-bottom:10px;opacity:' + opacity + ';border:1px solid #E8E8E8;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+    // Count progress
+    var doneCount = 0;
+    var totalCount = p.steps.length;
+    var nextUpIndex = -1;
+    for (var i = 0; i < p.steps.length; i++) {
+        if (p.steps[i].done) { doneCount++; }
+        else if (nextUpIndex === -1) { nextUpIndex = i; }
+    }
+    var pctDone = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
-    /* --- Row 1: Avatar + Name + Room + SM badge --- */
-    html += '<div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-flex-wrap:wrap;flex-wrap:wrap;margin-bottom:8px;">';
+    // Group steps
+    var completedSteps = [];
+    var upcomingSteps = [];
+    for (var j = 0; j < p.steps.length; j++) {
+        if (p.steps[j].done) {
+            completedSteps.push(j);
+        } else if (j !== nextUpIndex) {
+            upcomingSteps.push(j);
+        }
+    }
 
-    // Avatar circle
+    var html = '';
+
+    // Card with PCC left border
+    html += '<div style="background:white;border-radius:10px;padding:14px 14px 14px 18px;margin-bottom:10px;border:1px solid #E8E8E8;border-left:5px solid ' + pccColor.text + ';box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+
+    /* --- Row 1: Avatar + Name + Room + SM + Wait time --- */
+    html += '<div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-flex-wrap:wrap;flex-wrap:wrap;margin-bottom:6px;">';
+
     html += '<div style="width:44px;height:44px;border-radius:22px;background:' + pccColor.bg + ';color:' + pccColor.text + ';display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;font-weight:700;font-size:16px;margin-right:10px;-webkit-flex-shrink:0;flex-shrink:0;">' + escapeHtml(p.initials) + '</div>';
 
-    // Name
     html += '<span style="font-size:18px;font-weight:600;margin-right:8px;">' + escapeHtml(p.name) + '</span>';
 
-    // Room badge
+    // Room badge (amber for unassigned)
     if (p.room) {
         html += '<span style="font-size:14px;font-weight:700;background:#F0F0F0;padding:3px 10px;border-radius:10px;margin-right:8px;">ROOM ' + escapeHtml(p.room) + '</span>';
     } else {
-        html += '<span style="font-size:14px;font-weight:700;background:#FEE2E2;color:#991B1B;padding:3px 10px;border-radius:10px;margin-right:8px;">ROOM UNASSIGNED</span>';
+        html += '<span style="font-size:14px;font-weight:700;background:#FEF3C7;color:#92400E;padding:3px 10px;border-radius:10px;margin-right:8px;">ROOM UNASSIGNED</span>';
     }
 
-    // Social media badge
     if (p.socialMedia) {
-        html += '<span style="font-size:16px;background:#D4EDDA;color:#155724;padding:2px 8px;border-radius:10px;">SM</span>';
+        html += '<span style="font-size:14px;font-weight:600;background:#D4EDDA;color:#155724;padding:3px 10px;border-radius:10px;margin-right:8px;">SM</span>';
+    }
+
+    // Wait time (pushed right)
+    if (p.checkedInAt) {
+        html += '<span style="font-size:14px;color:#999;margin-left:auto;">' + formatElapsed(p.checkedInAt) + '</span>';
     }
 
     html += '</div>';
 
-    /* --- Row 2: PCC badge + Visit type --- */
-    html += '<div style="margin-bottom:8px;">';
+    /* --- Row 2: PCC + Visit type + Progress count --- */
+    html += '<div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-flex-wrap:wrap;flex-wrap:wrap;margin-bottom:8px;">';
     html += '<span style="display:inline-block;font-size:16px;background:' + pccColor.bg + ';color:' + pccColor.text + ';padding:2px 10px;border-radius:10px;margin-right:8px;font-weight:500;">' + escapeHtml(p.pcc) + '</span>';
-    html += '<span style="font-size:16px;color:#666;">' + escapeHtml(p.visitTypeLabel) + '</span>';
+    html += '<span style="font-size:16px;color:#666;margin-right:8px;">' + escapeHtml(p.visitTypeLabel) + '</span>';
+    html += '<span style="font-size:14px;color:#999;font-weight:600;">' + doneCount + ' of ' + totalCount + '</span>';
     html += '</div>';
 
-    /* --- Row 3: Workflow steps --- */
-    html += '<div style="margin-bottom:10px;">';
-    var foundNextUp = false;
-    for (var i = 0; i < p.steps.length; i++) {
-        var step = p.steps[i];
-        var isNextUp = !step.done && !foundNextUp && !p.done;
-        if (isNextUp) foundNextUp = true;
+    /* --- Progress bar --- */
+    html += '<div style="height:4px;background:#E8E8E8;border-radius:2px;margin-bottom:10px;">';
+    html += '<div style="height:4px;background:#16A34A;border-radius:2px;width:' + pctDone + '%;"></div>';
+    html += '</div>';
 
-        var bg, clr, bdr, label;
-        if (step.done) {
-            bg = '#D4EDDA'; clr = '#155724'; bdr = '#C3E6CB';
-            label = '&#10003; ' + escapeHtml(step.name);
-        } else if (isNextUp) {
-            bg = '#FFF3CD'; clr = '#856404'; bdr = '#FFEEBA';
-            label = escapeHtml(step.name);
-        } else {
-            bg = '#E8E8E8'; clr = '#555'; bdr = '#DDD';
-            label = escapeHtml(step.name);
+    /* --- Divider --- */
+    html += '<div style="border-top:1px solid #F0F0F0;margin-bottom:10px;"></div>';
+
+    /* --- Completed steps (collapsible) --- */
+    if (completedSteps.length > 0) {
+        html += '<div onclick="toggleCompletedSteps(' + p.id + ')" style="cursor:pointer;padding:6px 10px;margin-bottom:6px;font-size:15px;color:#16A34A;-webkit-user-select:none;user-select:none;border-radius:8px;background:#F0FDF4;">';
+        html += (p.showCompletedSteps ? '&#9660;' : '&#9654;') + ' &#10003; ' + completedSteps.length + ' completed';
+        html += '</div>';
+
+        if (p.showCompletedSteps) {
+            html += '<div style="margin-bottom:8px;padding-left:4px;">';
+            for (var c = 0; c < completedSteps.length; c++) {
+                var ci = completedSteps[c];
+                html += '<span onclick="toggleStep(' + p.id + ',' + ci + ')" style="display:inline-block;padding:5px 10px;margin:2px;border-radius:16px;font-size:13px;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation;background:#D4EDDA;color:#155724;border:1px solid #C3E6CB;">&#10003; ' + escapeHtml(p.steps[ci].name) + '</span>';
+            }
+            html += '</div>';
         }
-
-        html += '<span onclick="toggleStep(' + p.id + ',' + i + ')" style="display:inline-block;padding:6px 12px;margin:3px;border-radius:20px;font-size:14px;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation;background:' + bg + ';color:' + clr + ';border:1px solid ' + bdr + ';">' + label + '</span>';
     }
-    html += '</div>';
 
-    /* --- Row 4: Action buttons --- */
-    html += '<div style="display:-webkit-flex;display:flex;-webkit-flex-wrap:wrap;flex-wrap:wrap;-webkit-align-items:center;align-items:center;">';
+    /* --- Next up step (prominent) --- */
+    if (nextUpIndex >= 0) {
+        html += '<div onclick="toggleStep(' + p.id + ',' + nextUpIndex + ')" style="cursor:pointer;padding:12px 16px;margin:6px 0;border-radius:10px;font-size:17px;font-weight:600;background:#FFF3CD;color:#92400E;border:2px solid #FBBF24;-webkit-user-select:none;user-select:none;touch-action:manipulation;">';
+        html += '&#10140; ' + escapeHtml(p.steps[nextUpIndex].name);
+        html += '</div>';
+    }
 
+    /* --- Upcoming steps (collapsible) --- */
+    if (upcomingSteps.length > 0) {
+        html += '<div onclick="toggleUpcomingSteps(' + p.id + ')" style="cursor:pointer;padding:6px 10px;margin-top:6px;margin-bottom:4px;font-size:15px;color:#888;-webkit-user-select:none;user-select:none;border-radius:8px;background:#FAFAFA;">';
+        html += (p.showUpcomingSteps ? '&#9660;' : '&#9654;') + ' ' + upcomingSteps.length + ' remaining';
+        html += '</div>';
+
+        if (p.showUpcomingSteps) {
+            html += '<div style="margin-bottom:8px;padding-left:4px;">';
+            for (var u = 0; u < upcomingSteps.length; u++) {
+                var ui = upcomingSteps[u];
+                html += '<span onclick="toggleStep(' + p.id + ',' + ui + ')" style="display:inline-block;padding:5px 10px;margin:2px;border-radius:16px;font-size:13px;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation;background:#E8E8E8;color:#555;border:1px solid #DDD;">' + escapeHtml(p.steps[ui].name) + '</span>';
+            }
+            html += '</div>';
+        }
+    }
+
+    /* --- Divider --- */
+    html += '<div style="border-top:1px solid #F0F0F0;margin:8px 0 10px 0;"></div>';
+
+    /* --- Action buttons --- */
+    html += '<div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-flex-wrap:wrap;flex-wrap:wrap;">';
     html += '<button onclick="toggleNotes(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #DDD;background:' + (p.showNotes ? '#E8E8E8' : '#F8F8F8') + ';cursor:pointer;-webkit-appearance:none;">Notes</button>';
-
-    if (!p.done) {
-        html += '<button onclick="startEdit(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #FBBF24;background:#FEF3C7;color:#92400E;cursor:pointer;-webkit-appearance:none;">Edit</button>';
-        html += '<button onclick="markDone(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #C3E6CB;background:#D4EDDA;color:#155724;cursor:pointer;-webkit-appearance:none;">Done</button>';
-    }
-
-    html += '<button onclick="removePatient(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #F5C6CB;background:#F8D7DA;color:#721C24;cursor:pointer;-webkit-appearance:none;">Remove</button>';
-
+    html += '<button onclick="startEdit(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #FBBF24;background:#FEF3C7;color:#92400E;cursor:pointer;-webkit-appearance:none;">Edit</button>';
+    html += '<button onclick="markDone(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #16A34A;background:#16A34A;color:white;cursor:pointer;font-weight:600;-webkit-appearance:none;">&#10003; Done</button>';
+    html += '<span style="-webkit-flex:1;flex:1;"></span>';
+    html += '<button onclick="removePatient(' + p.id + ')" style="font-size:14px;padding:6px 12px;margin:3px;border-radius:6px;border:1px solid #E8E8E8;background:white;color:#BBB;cursor:pointer;-webkit-appearance:none;">Remove</button>';
     html += '</div>';
 
     /* --- Notes area (toggle) --- */
@@ -691,7 +816,15 @@ function renderAll() {
 }
 
 // ========== INIT ==========
+var _now = new Date();
+var _days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var _months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+document.getElementById('today-date').textContent = _days[_now.getDay()] + ', ' + _months[_now.getMonth()] + ' ' + _now.getDate();
+
 renderAll();
+
+// Update elapsed times every 60s
+setInterval(function() { saveAllNotes(); renderPatients(); }, 60000);
 </script>
 </body>
 </html>
