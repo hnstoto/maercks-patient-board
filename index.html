@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Maercks Institute - Patient Board</title>
+<style>
+* { -webkit-box-sizing: border-box; box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background: #F5F5F5;
+    color: #333;
+    padding: 12px;
+    padding-bottom: 60px;
+    -webkit-text-size-adjust: 100%;
+}
+button, input, select, textarea {
+    font-family: inherit;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+}
+</style>
+</head>
+<body>
+
+<!-- ===== TOP BAR ===== -->
+<div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-flex-wrap:wrap;flex-wrap:wrap;background:white;border-radius:10px;padding:12px;margin-bottom:10px;border:1px solid #E8E8E8;">
+    <button id="add-btn" onclick="toggleForm()" style="font-size:18px;padding:10px 20px;border-radius:8px;border:1px solid #2563EB;background:#2563EB;color:white;cursor:pointer;margin:3px;font-weight:600;-webkit-appearance:none;">+ Add Patient</button>
+    <button id="chat-btn" onclick="toggleChat()" style="font-size:18px;padding:10px 20px;border-radius:8px;border:1px solid #DDD;background:#F8F8F8;cursor:pointer;margin:3px;font-weight:500;-webkit-appearance:none;"></button>
+    <div id="stats" style="display:-webkit-flex;display:flex;-webkit-flex-wrap:wrap;flex-wrap:wrap;-webkit-align-items:center;align-items:center;margin-left:auto;"></div>
+</div>
+
+<!-- ===== LEGEND ===== -->
+<div style="padding:6px 12px;margin-bottom:10px;font-size:14px;">
+    <span style="display:inline-block;width:12px;height:12px;border-radius:6px;background:#E8E8E8;border:1px solid #DDD;vertical-align:middle;margin-right:4px;"></span><span style="vertical-align:middle;margin-right:16px;">Pending</span>
+    <span style="display:inline-block;width:12px;height:12px;border-radius:6px;background:#FFF3CD;border:1px solid #FFEEBA;vertical-align:middle;margin-right:4px;"></span><span style="vertical-align:middle;margin-right:16px;">Next up</span>
+    <span style="display:inline-block;width:12px;height:12px;border-radius:6px;background:#D4EDDA;border:1px solid #C3E6CB;vertical-align:middle;margin-right:4px;"></span><span style="vertical-align:middle;">Done</span>
+</div>
+
+<!-- ===== CHAT SECTION ===== -->
+<div id="chat-section" style="display:none;margin-bottom:10px;">
+    <div style="background:white;border-radius:10px;padding:14px;border:1px solid #E8E8E8;">
+        <div id="chat-messages" style="max-height:200px;overflow-y:auto;margin-bottom:10px;padding:4px;"></div>
+        <div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;margin-bottom:8px;">
+            <select id="chat-sender" style="font-size:18px;padding:8px;border:1px solid #DDD;border-radius:6px;margin-right:8px;-webkit-appearance:menulist;background:white;">
+                <option value="Hannah">Hannah</option>
+                <option value="Naomi">Naomi</option>
+                <option value="Nicole">Nicole</option>
+                <option value="Elizabeth">Elizabeth</option>
+                <option value="Paloma">Paloma</option>
+                <option value="Natalya">Natalya</option>
+                <option value="Other">Other</option>
+            </select>
+            <input id="chat-input" type="text" placeholder="Type a message..." onkeydown="chatKeyDown(event)" style="font-size:18px;padding:8px 10px;border:1px solid #DDD;border-radius:6px;-webkit-flex:1;flex:1;margin-right:8px;-webkit-appearance:none;">
+            <button onclick="sendMessage()" style="font-size:18px;padding:8px 18px;border-radius:8px;border:1px solid #2563EB;background:#2563EB;color:white;cursor:pointer;font-weight:600;-webkit-appearance:none;">Send</button>
+        </div>
+        <div style="text-align:right;">
+            <button onclick="clearChat()" style="font-size:14px;padding:4px 12px;border-radius:6px;border:1px solid #DDD;background:#F8F8F8;color:#999;cursor:pointer;-webkit-appearance:none;">Clear all</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== ADD PATIENT FORM ===== -->
+<div id="form-section" style="display:none;margin-bottom:10px;">
+    <div style="background:white;border-radius:10px;padding:16px;border:2px solid #2563EB;">
+        <div style="font-size:18px;font-weight:700;margin-bottom:14px;">New Patient</div>
+
+        <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Full Name <span style="color:#C00;">*</span></label>
+            <input id="f-name" type="text" placeholder="e.g. Jane Beltz" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;-webkit-appearance:none;">
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Room</label>
+            <input id="f-room" type="text" placeholder="e.g. 1, 2, OR" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;-webkit-appearance:none;">
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Assigned PCC</label>
+            <select id="f-pcc" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;-webkit-appearance:menulist;background:white;">
+                <option value="Unassigned">Unassigned</option>
+                <option value="Naomi">Naomi</option>
+                <option value="Nicole">Nicole</option>
+                <option value="Elizabeth">Elizabeth</option>
+                <option value="Paloma">Paloma</option>
+            </select>
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Visit Type <span style="color:#C00;">*</span></label>
+            <select id="f-visit" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;-webkit-appearance:menulist;background:white;">
+                <option value="">-- Select --</option>
+                <option value="new_consult">New patient consult</option>
+                <option value="pre_op">Pre-op</option>
+                <option value="next_day_post_op">Next day post-op</option>
+                <option value="general_post_op">General post-op</option>
+            </select>
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Social Media Consent</label>
+            <select id="f-social" style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;-webkit-appearance:menulist;background:white;">
+                <option value="no">No social media</option>
+                <option value="yes">Social media</option>
+            </select>
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:16px;margin-bottom:4px;font-weight:500;">Notes</label>
+            <textarea id="f-notes" rows="2" placeholder="Optional notes..." style="width:100%;padding:10px;font-size:18px;border:1px solid #CCC;border-radius:6px;resize:vertical;font-family:inherit;-webkit-appearance:none;"></textarea>
+        </div>
+
+        <div style="display:-webkit-flex;display:flex;">
+            <button onclick="submitPatient()" style="font-size:18px;padding:10px 24px;border-radius:8px;border:1px solid #16A34A;background:#16A34A;color:white;cursor:pointer;font-weight:600;margin-right:8px;-webkit-appearance:none;">Add Patient</button>
+            <button onclick="toggleForm()" style="font-size:18px;padding:10px 24px;border-radius:8px;border:1px solid #DDD;background:#F8F8F8;cursor:pointer;-webkit-appearance:none;">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== PATIENT CARDS ===== -->
+<div id="patients-active"></div>
+<div id="patients-done"></div>
+
+<script>
+/* ================================================================
+   PATIENT STATUS BOARD — Maercks Institute
+   ES5-compatible for Safari on iPad / iPhone
+   ================================================================ */
+
+// ========== STATE ==========
+var patients = [];
+var messages = [];
+var nextId = 1;
+var formVisible = false;
+var chatVisible = false;
+
+// ========== PCC COLORS ==========
+var PCC_COLORS = {
+    'Naomi':      { bg: '#EEEDFE', text: '#534AB7' },
+    'Nicole':     { bg: '#E1F5EE', text: '#0F6E56' },
+    'Elizabeth':  { bg: '#E6F1FB', text: '#185FA5' },
+    'Paloma':     { bg: '#FBEAF0', text: '#993556' },
+    'Unassigned': { bg: '#F1EFE8', text: '#5F5E5A' }
+};
+
+// ========== CHAT COLORS ==========
+var CHAT_COLORS = {
+    'Hannah':   { bg: '#FAEEDA', text: '#854F0B' },
+    'Naomi':    { bg: '#EEEDFE', text: '#534AB7' },
+    'Nicole':   { bg: '#E1F5EE', text: '#0F6E56' },
+    'Elizabeth': { bg: '#E6F1FB', text: '#185FA5' },
+    'Paloma':   { bg: '#FBEAF0', text: '#993556' },
+    'Natalya':  { bg: '#FAECE7', text: '#993C1D' },
+    'Other':    { bg: '#F1EFE8', text: '#5F5E5A' }
+};
+
+// ========== VISIT TYPE LABELS ==========
+var VISIT_LABELS = {
+    'new_consult':       'New patient consult',
+    'pre_op':            'Pre-op',
+    'next_day_post_op':  'Next day post-op',
+    'general_post_op':   'General post-op'
+};
+
+// ========== STEP DEFINITIONS ==========
+function getStepNames(visitType, hasSM) {
+    if (visitType === 'new_consult') {
+        return ['Checked in', 'Roomed', 'Consent signed', 'Vectra complete', 'Seen by Dr', 'Quote presented', 'Seen by Dr 2', 'Checkout'];
+    }
+    if (visitType === 'pre_op') {
+        if (hasSM) {
+            return ['Checked in', 'Roomed', 'Urine', 'Consent signed', 'Social media intro', 'Vectra complete', 'Cameras prepped', 'Seen by Dr (filmed)', 'Vectra', 'Prepped for OR', 'Dr informed', 'Cameras prepped', 'Dr take to OR (filmed)', 'Checkout'];
+        }
+        return ['Checked in', 'Roomed', 'Urine complete', 'Consent signed', 'Vectra complete', 'Seen by Dr', 'Vectra complete', 'Prepped for OR', 'Dr informed', 'PCC take to OR', 'Checkout'];
+    }
+    if (visitType === 'next_day_post_op') {
+        if (hasSM) {
+            return ['Checked in', 'Roomed', 'Cameras prepped', 'Dr unwrap (filmed)', 'Vectra', 'Cameras prepped', 'Dr (filmed)', 'Checkout'];
+        }
+        return ['Checked in', 'Roomed', 'Dr unwrap', 'Vectra complete', 'Seen by Dr', 'Checkout'];
+    }
+    if (visitType === 'general_post_op') {
+        if (hasSM) {
+            return ['Checked in', 'Roomed', 'Vectra', 'Cameras prepped', 'Seen by Dr (filmed)', 'Checkout'];
+        }
+        return ['Checked in', 'Roomed', 'Vectra complete', 'Seen by Dr', 'Checkout'];
+    }
+    return [];
+}
+
+// ========== UTILITY FUNCTIONS ==========
+function escapeHtml(s) {
+    if (!s) return '';
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(s));
+    return div.innerHTML;
+}
+
+function getInitials(name) {
+    var parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+        return parts[0].charAt(0).toUpperCase() + parts[parts.length - 1].charAt(0).toUpperCase();
+    }
+    return parts[0].charAt(0).toUpperCase();
+}
+
+function formatTime(d) {
+    var h = d.getHours();
+    var m = d.getMinutes();
+    var ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12;
+    if (h === 0) h = 12;
+    var mStr = m < 10 ? '0' + m : '' + m;
+    return h + ':' + mStr + ampm;
+}
+
+function findPatient(id) {
+    for (var i = 0; i < patients.length; i++) {
+        if (patients[i].id === id) return patients[i];
+    }
+    return null;
+}
+
+function saveAllNotes() {
+    for (var i = 0; i < patients.length; i++) {
+        if (patients[i].showNotes) {
+            var ta = document.getElementById('notes-input-' + patients[i].id);
+            if (ta) patients[i].notes = ta.value;
+        }
+    }
+}
+
+// ========== FORM ACTIONS ==========
+function toggleForm() {
+    formVisible = !formVisible;
+    var section = document.getElementById('form-section');
+    var btn = document.getElementById('add-btn');
+    if (formVisible) {
+        section.style.display = 'block';
+        btn.innerHTML = '&#10005; Cancel';
+        btn.style.background = '#666';
+        btn.style.borderColor = '#666';
+        setTimeout(function() {
+            document.getElementById('f-name').focus();
+        }, 50);
+    } else {
+        section.style.display = 'none';
+        btn.innerHTML = '+ Add Patient';
+        btn.style.background = '#2563EB';
+        btn.style.borderColor = '#2563EB';
+        clearForm();
+    }
+}
+
+function clearForm() {
+    document.getElementById('f-name').value = '';
+    document.getElementById('f-room').value = '';
+    document.getElementById('f-pcc').value = 'Unassigned';
+    document.getElementById('f-visit').value = '';
+    document.getElementById('f-social').value = 'no';
+    document.getElementById('f-notes').value = '';
+}
+
+function submitPatient() {
+    var name = document.getElementById('f-name').value.trim();
+    var room = document.getElementById('f-room').value.trim();
+    var pcc = document.getElementById('f-pcc').value;
+    var visitType = document.getElementById('f-visit').value;
+    var hasSM = document.getElementById('f-social').value === 'yes';
+    var notes = document.getElementById('f-notes').value.trim();
+
+    if (!name) { alert('Please enter the patient name.'); return; }
+    if (!visitType) { alert('Please select a visit type.'); return; }
+
+    var stepNames = getStepNames(visitType, hasSM);
+    var steps = [];
+    for (var i = 0; i < stepNames.length; i++) {
+        steps.push({ name: stepNames[i], done: false });
+    }
+
+    patients.push({
+        id: nextId++,
+        name: name,
+        initials: getInitials(name),
+        room: room,
+        pcc: pcc,
+        visitType: visitType,
+        visitTypeLabel: VISIT_LABELS[visitType] || visitType,
+        socialMedia: hasSM,
+        notes: notes,
+        steps: steps,
+        done: false,
+        showNotes: false
+    });
+
+    toggleForm();
+    renderAll();
+}
+
+// ========== PATIENT ACTIONS ==========
+function toggleStep(patientId, stepIndex) {
+    var p = findPatient(patientId);
+    if (p && !p.done) {
+        saveAllNotes();
+        p.steps[stepIndex].done = !p.steps[stepIndex].done;
+        renderPatients();
+        renderStats();
+    }
+}
+
+function markDone(patientId) {
+    var p = findPatient(patientId);
+    if (p) {
+        saveAllNotes();
+        p.done = true;
+        for (var i = 0; i < p.steps.length; i++) {
+            p.steps[i].done = true;
+        }
+        renderPatients();
+        renderStats();
+    }
+}
+
+function removePatient(patientId) {
+    if (!confirm('Remove this patient from the board?')) return;
+    for (var i = 0; i < patients.length; i++) {
+        if (patients[i].id === patientId) {
+            patients.splice(i, 1);
+            break;
+        }
+    }
+    renderPatients();
+    renderStats();
+}
+
+function toggleNotes(patientId) {
+    var p = findPatient(patientId);
+    if (p) {
+        p.showNotes = !p.showNotes;
+        var notesDiv = document.getElementById('notes-' + patientId);
+        if (notesDiv) {
+            notesDiv.style.display = p.showNotes ? 'block' : 'none';
+            if (p.showNotes) {
+                var ta = document.getElementById('notes-input-' + patientId);
+                if (ta) ta.focus();
+            }
+        }
+    }
+}
+
+function updateNotes(patientId) {
+    var p = findPatient(patientId);
+    if (p) {
+        var ta = document.getElementById('notes-input-' + patientId);
+        if (ta) p.notes = ta.value;
+    }
+}
+
+// ========== CHAT ACTIONS ==========
+function toggleChat() {
+    chatVisible = !chatVisible;
+    var section = document.getElementById('chat-section');
+    if (chatVisible) {
+        section.style.display = 'block';
+        renderChat();
+    } else {
+        section.style.display = 'none';
+    }
+    updateChatBtn();
+}
+
+function sendMessage() {
+    var sender = document.getElementById('chat-sender').value;
+    var input = document.getElementById('chat-input');
+    var text = input.value.trim();
+    if (!text) return;
+
+    messages.push({ sender: sender, text: text, time: new Date() });
+    input.value = '';
+    input.focus();
+    renderChat();
+    updateChatBtn();
+}
+
+function clearChat() {
+    if (!confirm('Clear all chat messages?')) return;
+    messages = [];
+    renderChat();
+    updateChatBtn();
+}
+
+function chatKeyDown(evt) {
+    if (evt.keyCode === 13) {
+        evt.preventDefault();
+        sendMessage();
+    }
+}
+
+// ========== RENDER: STATS ==========
+function renderStats() {
+    var activeCount = 0;
+    var doneCount = 0;
+    var pccCounts = {};
+
+    for (var i = 0; i < patients.length; i++) {
+        if (patients[i].done) {
+            doneCount++;
+        } else {
+            activeCount++;
+            var pcc = patients[i].pcc;
+            if (!pccCounts[pcc]) pccCounts[pcc] = 0;
+            pccCounts[pcc]++;
+        }
+    }
+
+    var html = '';
+    html += '<span style="display:inline-block;padding:4px 12px;background:#E8E8E8;border-radius:12px;font-size:16px;margin:3px;">Active: ' + activeCount + '</span>';
+    html += '<span style="display:inline-block;padding:4px 12px;background:#D4EDDA;color:#155724;border-radius:12px;font-size:16px;margin:3px;">Done: ' + doneCount + '</span>';
+
+    var pccOrder = ['Naomi', 'Nicole', 'Elizabeth', 'Paloma', 'Unassigned'];
+    for (var j = 0; j < pccOrder.length; j++) {
+        var name = pccOrder[j];
+        if (pccCounts[name]) {
+            var c = PCC_COLORS[name];
+            html += '<span style="display:inline-block;padding:4px 12px;background:' + c.bg + ';color:' + c.text + ';border-radius:12px;font-size:16px;margin:3px;">' + escapeHtml(name) + ': ' + pccCounts[name] + '</span>';
+        }
+    }
+
+    document.getElementById('stats').innerHTML = html;
+}
+
+// ========== RENDER: CHAT BUTTON ==========
+function updateChatBtn() {
+    var btn = document.getElementById('chat-btn');
+    var count = messages.length;
+    var countStr = count > 0 ? ' (' + count + ')' : '';
+    if (chatVisible) {
+        btn.textContent = 'Hide Chat' + countStr;
+    } else {
+        btn.textContent = 'Show Chat' + countStr;
+    }
+}
+
+// ========== RENDER: CHAT MESSAGES ==========
+function renderChat() {
+    var html = '';
+    if (messages.length === 0) {
+        html = '<div style="color:#999;font-size:16px;text-align:center;padding:20px;">No messages yet</div>';
+    } else {
+        for (var i = 0; i < messages.length; i++) {
+            var msg = messages[i];
+            var c = CHAT_COLORS[msg.sender] || CHAT_COLORS['Other'];
+            html += '<div style="margin-bottom:6px;">';
+            html += '<span style="display:inline-block;padding:2px 8px;border-radius:8px;font-size:15px;font-weight:600;background:' + c.bg + ';color:' + c.text + ';margin-right:6px;">' + escapeHtml(msg.sender) + '</span>';
+            html += '<span style="font-size:17px;">' + escapeHtml(msg.text) + '</span>';
+            html += '<span style="font-size:14px;color:#999;margin-left:8px;">' + formatTime(msg.time) + '</span>';
+            html += '</div>';
+        }
+    }
+
+    var el = document.getElementById('chat-messages');
+    el.innerHTML = html;
+    el.scrollTop = el.scrollHeight;
+}
+
+// ========== RENDER: PATIENT CARD ==========
+function renderCard(p) {
+    var pccColor = PCC_COLORS[p.pcc] || PCC_COLORS['Unassigned'];
+    var opacity = p.done ? '0.4' : '1';
+
+    var html = '<div style="background:white;border-radius:10px;padding:14px;margin-bottom:10px;opacity:' + opacity + ';border:1px solid #E8E8E8;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+
+    /* --- Row 1: Avatar + Name + Room + SM badge --- */
+    html += '<div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-flex-wrap:wrap;flex-wrap:wrap;margin-bottom:8px;">';
+
+    // Avatar circle
+    html += '<div style="width:44px;height:44px;border-radius:22px;background:' + pccColor.bg + ';color:' + pccColor.text + ';display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;font-weight:700;font-size:16px;margin-right:10px;-webkit-flex-shrink:0;flex-shrink:0;">' + escapeHtml(p.initials) + '</div>';
+
+    // Name
+    html += '<span style="font-size:18px;font-weight:600;margin-right:8px;">' + escapeHtml(p.name) + '</span>';
+
+    // Room badge
+    if (p.room) {
+        html += '<span style="font-size:16px;background:#F0F0F0;padding:2px 8px;border-radius:10px;margin-right:8px;">Rm ' + escapeHtml(p.room) + '</span>';
+    }
+
+    // Social media badge
+    if (p.socialMedia) {
+        html += '<span style="font-size:16px;background:#D4EDDA;color:#155724;padding:2px 8px;border-radius:10px;">SM</span>';
+    }
+
+    html += '</div>';
+
+    /* --- Row 2: PCC badge + Visit type --- */
+    html += '<div style="margin-bottom:8px;">';
+    html += '<span style="display:inline-block;font-size:16px;background:' + pccColor.bg + ';color:' + pccColor.text + ';padding:2px 10px;border-radius:10px;margin-right:8px;font-weight:500;">' + escapeHtml(p.pcc) + '</span>';
+    html += '<span style="font-size:16px;color:#666;">' + escapeHtml(p.visitTypeLabel) + '</span>';
+    html += '</div>';
+
+    /* --- Row 3: Workflow steps --- */
+    html += '<div style="margin-bottom:10px;">';
+    var foundNextUp = false;
+    for (var i = 0; i < p.steps.length; i++) {
+        var step = p.steps[i];
+        var isNextUp = !step.done && !foundNextUp && !p.done;
+        if (isNextUp) foundNextUp = true;
+
+        var bg, clr, bdr, label;
+        if (step.done) {
+            bg = '#D4EDDA'; clr = '#155724'; bdr = '#C3E6CB';
+            label = '&#10003; ' + escapeHtml(step.name);
+        } else if (isNextUp) {
+            bg = '#FFF3CD'; clr = '#856404'; bdr = '#FFEEBA';
+            label = escapeHtml(step.name);
+        } else {
+            bg = '#E8E8E8'; clr = '#555'; bdr = '#DDD';
+            label = escapeHtml(step.name);
+        }
+
+        html += '<span onclick="toggleStep(' + p.id + ',' + i + ')" style="display:inline-block;padding:6px 12px;margin:3px;border-radius:20px;font-size:14px;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation;background:' + bg + ';color:' + clr + ';border:1px solid ' + bdr + ';">' + label + '</span>';
+    }
+    html += '</div>';
+
+    /* --- Row 4: Action buttons --- */
+    html += '<div style="display:-webkit-flex;display:flex;-webkit-flex-wrap:wrap;flex-wrap:wrap;-webkit-align-items:center;align-items:center;">';
+
+    html += '<button onclick="toggleNotes(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #DDD;background:' + (p.showNotes ? '#E8E8E8' : '#F8F8F8') + ';cursor:pointer;-webkit-appearance:none;">Notes</button>';
+
+    if (!p.done) {
+        html += '<button onclick="markDone(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #C3E6CB;background:#D4EDDA;color:#155724;cursor:pointer;-webkit-appearance:none;">Done</button>';
+    }
+
+    html += '<button onclick="removePatient(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #F5C6CB;background:#F8D7DA;color:#721C24;cursor:pointer;-webkit-appearance:none;">Remove</button>';
+
+    html += '</div>';
+
+    /* --- Notes area (toggle) --- */
+    var notesDisplay = p.showNotes ? 'block' : 'none';
+    html += '<div id="notes-' + p.id + '" style="display:' + notesDisplay + ';margin-top:8px;">';
+    html += '<textarea id="notes-input-' + p.id + '" oninput="updateNotes(' + p.id + ')" placeholder="Add notes..." style="width:100%;padding:10px;font-size:16px;border:1px solid #DDD;border-radius:6px;resize:vertical;min-height:60px;font-family:inherit;-webkit-appearance:none;">' + escapeHtml(p.notes) + '</textarea>';
+    html += '</div>';
+
+    html += '</div>';
+    return html;
+}
+
+// ========== RENDER: PATIENT LIST ==========
+function renderPatients() {
+    var activeHtml = '';
+    var doneHtml = '';
+
+    for (var i = 0; i < patients.length; i++) {
+        var p = patients[i];
+        var cardHtml = renderCard(p);
+        if (p.done) {
+            doneHtml += cardHtml;
+        } else {
+            activeHtml += cardHtml;
+        }
+    }
+
+    if (!activeHtml && !doneHtml) {
+        activeHtml = '<div style="text-align:center;padding:40px;color:#999;font-size:18px;">No patients on the board yet.<br>Tap <b>+ Add Patient</b> to get started.</div>';
+    }
+
+    if (doneHtml) {
+        doneHtml = '<div style="margin-top:16px;padding:8px 0;border-top:2px solid #E0E0E0;"><div style="font-size:14px;color:#999;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-left:4px;">Completed</div>' + doneHtml + '</div>';
+    }
+
+    document.getElementById('patients-active').innerHTML = activeHtml;
+    document.getElementById('patients-done').innerHTML = doneHtml;
+}
+
+// ========== RENDER ALL ==========
+function renderAll() {
+    renderStats();
+    renderPatients();
+    updateChatBtn();
+    if (chatVisible) renderChat();
+}
+
+// ========== INIT ==========
+renderAll();
+</script>
+</body>
+</html>
