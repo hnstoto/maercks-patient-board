@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Maercks Institute - Patient Board</title>
+<!-- Firebase SDK (compat for broad browser support) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <style>
 * { -webkit-box-sizing: border-box; box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -25,7 +28,10 @@ button, input, select, textarea {
 <!-- ===== HEADER ===== -->
 <div style="text-align:center;padding:8px 0 4px 0;margin-bottom:6px;">
     <div style="font-size:20px;font-weight:700;color:#333;letter-spacing:0.5px;">Maercks Institute</div>
-    <div id="today-date" style="font-size:14px;color:#999;"></div>
+    <div style="display:-webkit-flex;display:flex;-webkit-justify-content:center;justify-content:center;-webkit-align-items:center;align-items:center;">
+        <div id="today-date" style="font-size:14px;color:#999;"></div>
+        <span id="sync-dot" style="display:inline-block;width:8px;height:8px;border-radius:4px;background:#CCC;margin-left:8px;" title="Connecting..."></span>
+    </div>
 </div>
 
 <!-- ===== TOP BAR ===== -->
@@ -129,16 +135,45 @@ button, input, select, textarea {
 <script>
 /* ================================================================
    PATIENT STATUS BOARD — Maercks Institute
-   ES5-compatible for Safari on iPad / iPhone
+   Real-time sync via Firebase for multi-user collaboration
    ================================================================ */
+
+// ========== FIREBASE INIT ==========
+var firebaseConfig = {
+    apiKey: "AIzaSyCDi_e4n4mJ2UfCCc0f_FTej92a7thaaFQ",
+    authDomain: "maercks-patient-board.firebaseapp.com",
+    databaseURL: "https://maercks-patient-board-default-rtdb.firebaseio.com",
+    projectId: "maercks-patient-board",
+    storageBucket: "maercks-patient-board.firebasestorage.app",
+    messagingSenderId: "691899026034",
+    appId: "1:691899026034:web:e03ee47d88a4f02bda90eb"
+};
+firebase.initializeApp(firebaseConfig);
+var db = firebase.database();
+var patientsRef = db.ref('patients');
+var messagesRef = db.ref('messages');
 
 // ========== STATE ==========
 var patients = [];
 var messages = [];
-var nextId = 1;
 var formVisible = false;
 var chatVisible = false;
 var editingId = null;
+var localUI = {}; // per-patient UI state keyed by Firebase key
+
+// ========== CONNECTION MONITORING ==========
+db.ref('.info/connected').on('value', function(snap) {
+    var dot = document.getElementById('sync-dot');
+    if (dot) {
+        if (snap.val() === true) {
+            dot.style.background = '#16A34A';
+            dot.title = 'Connected — syncing in real time';
+        } else {
+            dot.style.background = '#EF4444';
+            dot.title = 'Offline — changes will sync when reconnected';
+        }
+    }
+});
 
 // ========== PCC COLORS ==========
 var PCC_COLORS = {
@@ -211,6 +246,7 @@ function getInitials(name) {
 }
 
 function formatTime(d) {
+    if (typeof d === 'number') d = new Date(d);
     var h = d.getHours();
     var m = d.getMinutes();
     var ampm = h >= 12 ? 'pm' : 'am';
@@ -222,7 +258,8 @@ function formatTime(d) {
 
 function formatElapsed(timestamp) {
     if (!timestamp) return '';
-    var diff = Math.floor((new Date() - timestamp) / 60000);
+    var ts = (typeof timestamp === 'number') ? timestamp : timestamp.getTime();
+    var diff = Math.floor((Date.now() - ts) / 60000);
     if (diff < 1) return 'just now';
     if (diff < 60) return diff + 'm ago';
     var hours = Math.floor(diff / 60);
@@ -238,13 +275,16 @@ function findPatient(id) {
     return null;
 }
 
-function saveAllNotes() {
-    for (var i = 0; i < patients.length; i++) {
-        if (patients[i].showNotes) {
-            var ta = document.getElementById('notes-input-' + patients[i].id);
-            if (ta) patients[i].notes = ta.value;
-        }
+function getUI(patientId) {
+    if (!localUI[patientId]) {
+        localUI[patientId] = { showNotes: false, showCompletedSteps: false, showUpcomingSteps: false };
     }
+    return localUI[patientId];
+}
+
+// Quote a Firebase key for use in inline onclick handlers
+function q(key) {
+    return "'" + key + "'";
 }
 
 // ========== FORM ACTIONS ==========
@@ -295,8 +335,7 @@ function submitPatient() {
         steps.push({ name: stepNames[i], done: false });
     }
 
-    patients.push({
-        id: nextId++,
+    patientsRef.push({
         name: name,
         initials: getInitials(name),
         room: room,
@@ -307,101 +346,81 @@ function submitPatient() {
         notes: notes,
         steps: steps,
         done: false,
-        showNotes: false,
-        showCompletedSteps: false,
-        showUpcomingSteps: false,
-        checkedInAt: new Date()
+        checkedInAt: Date.now()
     });
 
     toggleForm();
-    renderAll();
+    // renderAll() will be called automatically by Firebase listener
 }
 
 // ========== PATIENT ACTIONS ==========
 function toggleStep(patientId, stepIndex) {
     var p = findPatient(patientId);
     if (p && !p.done) {
-        saveAllNotes();
-        p.steps[stepIndex].done = !p.steps[stepIndex].done;
-        renderPatients();
-        renderStats();
+        var newDone = !p.steps[stepIndex].done;
+        db.ref('patients/' + patientId + '/steps/' + stepIndex + '/done').set(newDone);
     }
 }
 
 function markDone(patientId) {
     var p = findPatient(patientId);
     if (p) {
-        saveAllNotes();
-        p.done = true;
+        var updates = {};
+        updates.done = true;
         for (var i = 0; i < p.steps.length; i++) {
-            p.steps[i].done = true;
+            updates['steps/' + i + '/done'] = true;
         }
-        renderPatients();
-        renderStats();
+        db.ref('patients/' + patientId).update(updates);
     }
 }
 
 function removePatient(patientId) {
     if (!confirm('Remove this patient from the board?')) return;
-    for (var i = 0; i < patients.length; i++) {
-        if (patients[i].id === patientId) {
-            patients.splice(i, 1);
-            break;
-        }
-    }
-    renderPatients();
-    renderStats();
+    db.ref('patients/' + patientId).remove();
+    delete localUI[patientId];
 }
 
 function toggleNotes(patientId) {
-    var p = findPatient(patientId);
-    if (p) {
-        p.showNotes = !p.showNotes;
-        var notesDiv = document.getElementById('notes-' + patientId);
-        if (notesDiv) {
-            notesDiv.style.display = p.showNotes ? 'block' : 'none';
-            if (p.showNotes) {
-                var ta = document.getElementById('notes-input-' + patientId);
-                if (ta) ta.focus();
-            }
+    var ui = getUI(patientId);
+    ui.showNotes = !ui.showNotes;
+    var notesDiv = document.getElementById('notes-' + patientId);
+    if (notesDiv) {
+        notesDiv.style.display = ui.showNotes ? 'block' : 'none';
+        if (ui.showNotes) {
+            var ta = document.getElementById('notes-input-' + patientId);
+            if (ta) ta.focus();
         }
     }
 }
 
-function updateNotes(patientId) {
-    var p = findPatient(patientId);
-    if (p) {
-        var ta = document.getElementById('notes-input-' + patientId);
-        if (ta) p.notes = ta.value;
+function saveNotesToFirebase(patientId) {
+    var ta = document.getElementById('notes-input-' + patientId);
+    if (ta) {
+        db.ref('patients/' + patientId + '/notes').set(ta.value);
     }
 }
 
 function toggleCompletedSteps(patientId) {
-    var p = findPatient(patientId);
-    if (p) {
-        p.showCompletedSteps = !p.showCompletedSteps;
-        renderPatients();
-    }
+    var ui = getUI(patientId);
+    ui.showCompletedSteps = !ui.showCompletedSteps;
+    safeRenderPatients();
 }
 
 function toggleUpcomingSteps(patientId) {
-    var p = findPatient(patientId);
-    if (p) {
-        p.showUpcomingSteps = !p.showUpcomingSteps;
-        renderPatients();
-    }
+    var ui = getUI(patientId);
+    ui.showUpcomingSteps = !ui.showUpcomingSteps;
+    safeRenderPatients();
 }
 
 // ========== EDIT PATIENT ==========
 function startEdit(patientId) {
-    saveAllNotes();
     editingId = patientId;
-    renderPatients();
+    safeRenderPatients();
 }
 
 function cancelEdit() {
     editingId = null;
-    renderPatients();
+    safeRenderPatients();
 }
 
 function saveEdit(patientId) {
@@ -419,14 +438,16 @@ function saveEdit(patientId) {
 
     var workflowChanged = (visitType !== p.visitType || hasSM !== p.socialMedia);
 
-    p.name = name;
-    p.initials = getInitials(name);
-    p.room = room;
-    p.pcc = pcc;
-    p.notes = notes;
-    p.visitType = visitType;
-    p.visitTypeLabel = VISIT_LABELS[visitType] || visitType;
-    p.socialMedia = hasSM;
+    var updates = {
+        name: name,
+        initials: getInitials(name),
+        room: room,
+        pcc: pcc,
+        notes: notes,
+        visitType: visitType,
+        visitTypeLabel: VISIT_LABELS[visitType] || visitType,
+        socialMedia: hasSM
+    };
 
     if (workflowChanged) {
         var stepNames = getStepNames(visitType, hasSM);
@@ -434,19 +455,22 @@ function saveEdit(patientId) {
         for (var i = 0; i < stepNames.length; i++) {
             steps.push({ name: stepNames[i], done: false });
         }
-        p.steps = steps;
-        p.done = false;
-        p.showCompletedSteps = false;
-        p.showUpcomingSteps = false;
+        updates.steps = steps;
+        updates.done = false;
+        var ui = getUI(patientId);
+        ui.showCompletedSteps = false;
+        ui.showUpcomingSteps = false;
     }
 
+    db.ref('patients/' + patientId).update(updates);
     editingId = null;
-    renderAll();
+    // renderAll() called by Firebase listener
 }
 
 function renderEditForm(p) {
     var pccColor = PCC_COLORS[p.pcc] || PCC_COLORS['Unassigned'];
-    var html = '<div style="background:white;border-radius:10px;padding:14px;padding-left:18px;margin-bottom:10px;border:2px solid #F59E0B;border-left:5px solid ' + pccColor.text + ';box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+    var pid = q(p.id);
+    var html = '<div style="background:white;border-radius:10px;padding:14px 14px 14px 18px;margin-bottom:10px;border:2px solid #F59E0B;border-left:5px solid ' + pccColor.text + ';box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
     html += '<div style="font-size:18px;font-weight:700;margin-bottom:14px;color:#92400E;">Edit Patient</div>';
 
     html += '<div style="margin-bottom:10px;">';
@@ -492,7 +516,7 @@ function renderEditForm(p) {
     html += '<div style="font-size:14px;color:#92400E;margin-bottom:10px;padding:6px 10px;background:#FEF3C7;border-radius:6px;">Note: Changing visit type or social media will reset workflow steps.</div>';
 
     html += '<div style="display:-webkit-flex;display:flex;">';
-    html += '<button onclick="saveEdit(' + p.id + ')" style="font-size:18px;padding:10px 24px;border-radius:8px;border:1px solid #2563EB;background:#2563EB;color:white;cursor:pointer;font-weight:600;margin-right:8px;-webkit-appearance:none;">Save Changes</button>';
+    html += '<button onclick="saveEdit(' + pid + ')" style="font-size:18px;padding:10px 24px;border-radius:8px;border:1px solid #2563EB;background:#2563EB;color:white;cursor:pointer;font-weight:600;margin-right:8px;-webkit-appearance:none;">Save Changes</button>';
     html += '<button onclick="cancelEdit()" style="font-size:18px;padding:10px 24px;border-radius:8px;border:1px solid #DDD;background:#F8F8F8;cursor:pointer;-webkit-appearance:none;">Cancel</button>';
     html += '</div>';
 
@@ -519,18 +543,15 @@ function sendMessage() {
     var text = input.value.trim();
     if (!text) return;
 
-    messages.push({ sender: sender, text: text, time: new Date() });
+    messagesRef.push({ sender: sender, text: text, time: Date.now() });
     input.value = '';
     input.focus();
-    renderChat();
-    updateChatBtn();
+    // renderChat() called by Firebase listener
 }
 
 function clearChat() {
     if (!confirm('Clear all chat messages?')) return;
-    messages = [];
-    renderChat();
-    updateChatBtn();
+    messagesRef.remove();
 }
 
 function chatKeyDown(evt) {
@@ -610,6 +631,8 @@ function renderChat() {
 // ========== RENDER: COMPLETED CARD (compact) ==========
 function renderCompletedCard(p) {
     var pccColor = PCC_COLORS[p.pcc] || PCC_COLORS['Unassigned'];
+    var pid = q(p.id);
+    var ui = getUI(p.id);
     var html = '<div style="background:white;border-radius:10px;padding:10px 14px 10px 18px;margin-bottom:6px;opacity:0.5;border:1px solid #E8E8E8;border-left:5px solid ' + pccColor.text + ';">';
 
     html += '<div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-flex-wrap:wrap;flex-wrap:wrap;">';
@@ -628,14 +651,14 @@ function renderCompletedCard(p) {
 
     html += '<span style="-webkit-flex:1;flex:1;"></span>';
 
-    html += '<button onclick="toggleNotes(' + p.id + ')" style="font-size:14px;padding:4px 10px;margin:2px;border-radius:6px;border:1px solid #DDD;background:#F8F8F8;color:#666;cursor:pointer;-webkit-appearance:none;">Notes</button>';
-    html += '<button onclick="removePatient(' + p.id + ')" style="font-size:14px;padding:4px 10px;margin:2px;border-radius:6px;border:1px solid #E8E8E8;background:white;color:#BBB;cursor:pointer;-webkit-appearance:none;">Remove</button>';
+    html += '<button onclick="toggleNotes(' + pid + ')" style="font-size:14px;padding:4px 10px;margin:2px;border-radius:6px;border:1px solid #DDD;background:#F8F8F8;color:#666;cursor:pointer;-webkit-appearance:none;">Notes</button>';
+    html += '<button onclick="removePatient(' + pid + ')" style="font-size:14px;padding:4px 10px;margin:2px;border-radius:6px;border:1px solid #E8E8E8;background:white;color:#BBB;cursor:pointer;-webkit-appearance:none;">Remove</button>';
 
     html += '</div>';
 
-    var notesDisplay = p.showNotes ? 'block' : 'none';
+    var notesDisplay = ui.showNotes ? 'block' : 'none';
     html += '<div id="notes-' + p.id + '" style="display:' + notesDisplay + ';margin-top:8px;">';
-    html += '<textarea id="notes-input-' + p.id + '" oninput="updateNotes(' + p.id + ')" placeholder="Add notes..." style="width:100%;padding:8px;font-size:14px;border:1px solid #DDD;border-radius:6px;resize:vertical;min-height:40px;font-family:inherit;-webkit-appearance:none;">' + escapeHtml(p.notes) + '</textarea>';
+    html += '<textarea id="notes-input-' + p.id + '" onblur="saveNotesToFirebase(' + pid + ')" placeholder="Add notes..." style="width:100%;padding:8px;font-size:14px;border:1px solid #DDD;border-radius:6px;resize:vertical;min-height:40px;font-family:inherit;-webkit-appearance:none;">' + escapeHtml(p.notes) + '</textarea>';
     html += '</div>';
 
     html += '</div>';
@@ -652,6 +675,8 @@ function renderCard(p) {
     }
 
     var pccColor = PCC_COLORS[p.pcc] || PCC_COLORS['Unassigned'];
+    var pid = q(p.id);
+    var ui = getUI(p.id);
 
     // Count progress
     var doneCount = 0;
@@ -686,7 +711,7 @@ function renderCard(p) {
 
     html += '<span style="font-size:18px;font-weight:600;margin-right:8px;">' + escapeHtml(p.name) + '</span>';
 
-    // Room badge (amber for unassigned)
+    // Room badge
     if (p.room) {
         html += '<span style="font-size:14px;font-weight:700;background:#F0F0F0;padding:3px 10px;border-radius:10px;margin-right:8px;">ROOM ' + escapeHtml(p.room) + '</span>';
     } else {
@@ -697,7 +722,7 @@ function renderCard(p) {
         html += '<span style="font-size:14px;font-weight:600;background:#D4EDDA;color:#155724;padding:3px 10px;border-radius:10px;margin-right:8px;">SM</span>';
     }
 
-    // Wait time (pushed right)
+    // Wait time
     if (p.checkedInAt) {
         html += '<span style="font-size:14px;color:#999;margin-left:auto;">' + formatElapsed(p.checkedInAt) + '</span>';
     }
@@ -721,15 +746,15 @@ function renderCard(p) {
 
     /* --- Completed steps (collapsible) --- */
     if (completedSteps.length > 0) {
-        html += '<div onclick="toggleCompletedSteps(' + p.id + ')" style="cursor:pointer;padding:6px 10px;margin-bottom:6px;font-size:15px;color:#16A34A;-webkit-user-select:none;user-select:none;border-radius:8px;background:#F0FDF4;">';
-        html += (p.showCompletedSteps ? '&#9660;' : '&#9654;') + ' &#10003; ' + completedSteps.length + ' completed';
+        html += '<div onclick="toggleCompletedSteps(' + pid + ')" style="cursor:pointer;padding:6px 10px;margin-bottom:6px;font-size:15px;color:#16A34A;-webkit-user-select:none;user-select:none;border-radius:8px;background:#F0FDF4;">';
+        html += (ui.showCompletedSteps ? '&#9660;' : '&#9654;') + ' &#10003; ' + completedSteps.length + ' completed';
         html += '</div>';
 
-        if (p.showCompletedSteps) {
+        if (ui.showCompletedSteps) {
             html += '<div style="margin-bottom:8px;padding-left:4px;">';
             for (var c = 0; c < completedSteps.length; c++) {
                 var ci = completedSteps[c];
-                html += '<span onclick="toggleStep(' + p.id + ',' + ci + ')" style="display:inline-block;padding:5px 10px;margin:2px;border-radius:16px;font-size:13px;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation;background:#D4EDDA;color:#155724;border:1px solid #C3E6CB;">&#10003; ' + escapeHtml(p.steps[ci].name) + '</span>';
+                html += '<span onclick="toggleStep(' + pid + ',' + ci + ')" style="display:inline-block;padding:5px 10px;margin:2px;border-radius:16px;font-size:13px;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation;background:#D4EDDA;color:#155724;border:1px solid #C3E6CB;">&#10003; ' + escapeHtml(p.steps[ci].name) + '</span>';
             }
             html += '</div>';
         }
@@ -737,22 +762,22 @@ function renderCard(p) {
 
     /* --- Next up step (prominent) --- */
     if (nextUpIndex >= 0) {
-        html += '<div onclick="toggleStep(' + p.id + ',' + nextUpIndex + ')" style="cursor:pointer;padding:12px 16px;margin:6px 0;border-radius:10px;font-size:17px;font-weight:600;background:#FFF3CD;color:#92400E;border:2px solid #FBBF24;-webkit-user-select:none;user-select:none;touch-action:manipulation;">';
+        html += '<div onclick="toggleStep(' + pid + ',' + nextUpIndex + ')" style="cursor:pointer;padding:12px 16px;margin:6px 0;border-radius:10px;font-size:17px;font-weight:600;background:#FFF3CD;color:#92400E;border:2px solid #FBBF24;-webkit-user-select:none;user-select:none;touch-action:manipulation;">';
         html += '&#10140; ' + escapeHtml(p.steps[nextUpIndex].name);
         html += '</div>';
     }
 
     /* --- Upcoming steps (collapsible) --- */
     if (upcomingSteps.length > 0) {
-        html += '<div onclick="toggleUpcomingSteps(' + p.id + ')" style="cursor:pointer;padding:6px 10px;margin-top:6px;margin-bottom:4px;font-size:15px;color:#888;-webkit-user-select:none;user-select:none;border-radius:8px;background:#FAFAFA;">';
-        html += (p.showUpcomingSteps ? '&#9660;' : '&#9654;') + ' ' + upcomingSteps.length + ' remaining';
+        html += '<div onclick="toggleUpcomingSteps(' + pid + ')" style="cursor:pointer;padding:6px 10px;margin-top:6px;margin-bottom:4px;font-size:15px;color:#888;-webkit-user-select:none;user-select:none;border-radius:8px;background:#FAFAFA;">';
+        html += (ui.showUpcomingSteps ? '&#9660;' : '&#9654;') + ' ' + upcomingSteps.length + ' remaining';
         html += '</div>';
 
-        if (p.showUpcomingSteps) {
+        if (ui.showUpcomingSteps) {
             html += '<div style="margin-bottom:8px;padding-left:4px;">';
             for (var u = 0; u < upcomingSteps.length; u++) {
-                var ui = upcomingSteps[u];
-                html += '<span onclick="toggleStep(' + p.id + ',' + ui + ')" style="display:inline-block;padding:5px 10px;margin:2px;border-radius:16px;font-size:13px;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation;background:#E8E8E8;color:#555;border:1px solid #DDD;">' + escapeHtml(p.steps[ui].name) + '</span>';
+                var ui2 = upcomingSteps[u];
+                html += '<span onclick="toggleStep(' + pid + ',' + ui2 + ')" style="display:inline-block;padding:5px 10px;margin:2px;border-radius:16px;font-size:13px;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation;background:#E8E8E8;color:#555;border:1px solid #DDD;">' + escapeHtml(p.steps[ui2].name) + '</span>';
             }
             html += '</div>';
         }
@@ -763,17 +788,17 @@ function renderCard(p) {
 
     /* --- Action buttons --- */
     html += '<div style="display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-flex-wrap:wrap;flex-wrap:wrap;">';
-    html += '<button onclick="toggleNotes(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #DDD;background:' + (p.showNotes ? '#E8E8E8' : '#F8F8F8') + ';cursor:pointer;-webkit-appearance:none;">Notes</button>';
-    html += '<button onclick="startEdit(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #FBBF24;background:#FEF3C7;color:#92400E;cursor:pointer;-webkit-appearance:none;">Edit</button>';
-    html += '<button onclick="markDone(' + p.id + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #16A34A;background:#16A34A;color:white;cursor:pointer;font-weight:600;-webkit-appearance:none;">&#10003; Done</button>';
+    html += '<button onclick="toggleNotes(' + pid + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #DDD;background:' + (ui.showNotes ? '#E8E8E8' : '#F8F8F8') + ';cursor:pointer;-webkit-appearance:none;">Notes</button>';
+    html += '<button onclick="startEdit(' + pid + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #FBBF24;background:#FEF3C7;color:#92400E;cursor:pointer;-webkit-appearance:none;">Edit</button>';
+    html += '<button onclick="markDone(' + pid + ')" style="font-size:18px;padding:8px 16px;margin:3px;border-radius:8px;border:1px solid #16A34A;background:#16A34A;color:white;cursor:pointer;font-weight:600;-webkit-appearance:none;">&#10003; Done</button>';
     html += '<span style="-webkit-flex:1;flex:1;"></span>';
-    html += '<button onclick="removePatient(' + p.id + ')" style="font-size:14px;padding:6px 12px;margin:3px;border-radius:6px;border:1px solid #E8E8E8;background:white;color:#BBB;cursor:pointer;-webkit-appearance:none;">Remove</button>';
+    html += '<button onclick="removePatient(' + pid + ')" style="font-size:14px;padding:6px 12px;margin:3px;border-radius:6px;border:1px solid #E8E8E8;background:white;color:#BBB;cursor:pointer;-webkit-appearance:none;">Remove</button>';
     html += '</div>';
 
     /* --- Notes area (toggle) --- */
-    var notesDisplay = p.showNotes ? 'block' : 'none';
+    var notesDisplay = ui.showNotes ? 'block' : 'none';
     html += '<div id="notes-' + p.id + '" style="display:' + notesDisplay + ';margin-top:8px;">';
-    html += '<textarea id="notes-input-' + p.id + '" oninput="updateNotes(' + p.id + ')" placeholder="Add notes..." style="width:100%;padding:10px;font-size:16px;border:1px solid #DDD;border-radius:6px;resize:vertical;min-height:60px;font-family:inherit;-webkit-appearance:none;">' + escapeHtml(p.notes) + '</textarea>';
+    html += '<textarea id="notes-input-' + p.id + '" onblur="saveNotesToFirebase(' + pid + ')" placeholder="Add notes..." style="width:100%;padding:10px;font-size:16px;border:1px solid #DDD;border-radius:6px;resize:vertical;min-height:60px;font-family:inherit;-webkit-appearance:none;">' + escapeHtml(p.notes) + '</textarea>';
     html += '</div>';
 
     html += '</div>';
@@ -807,13 +832,72 @@ function renderPatients() {
     document.getElementById('patients-done').innerHTML = doneHtml;
 }
 
+// Safe re-render that preserves textarea focus
+function safeRenderPatients() {
+    var focused = document.activeElement;
+    var focusId = null;
+    var focusVal = null;
+    var focusSel = null;
+    if (focused && focused.tagName === 'TEXTAREA' && focused.id) {
+        focusId = focused.id;
+        focusVal = focused.value;
+        try { focusSel = [focused.selectionStart, focused.selectionEnd]; } catch(e) {}
+    }
+
+    renderPatients();
+    renderStats();
+
+    if (focusId) {
+        var el = document.getElementById(focusId);
+        if (el) {
+            el.value = focusVal;
+            el.focus();
+            try { if (focusSel) el.setSelectionRange(focusSel[0], focusSel[1]); } catch(e) {}
+        }
+    }
+}
+
 // ========== RENDER ALL ==========
 function renderAll() {
-    renderStats();
-    renderPatients();
+    safeRenderPatients();
     updateChatBtn();
     if (chatVisible) renderChat();
 }
+
+// ========== FIREBASE LISTENERS ==========
+patientsRef.on('value', function(snapshot) {
+    var data = snapshot.val() || {};
+    patients = [];
+    var keys = Object.keys(data);
+    for (var i = 0; i < keys.length; i++) {
+        var p = data[keys[i]];
+        p.id = keys[i];
+        // Ensure steps array exists (Firebase may strip empty arrays)
+        if (!p.steps) p.steps = [];
+        patients.push(p);
+    }
+    // Sort by check-in time (oldest first)
+    patients.sort(function(a, b) {
+        return (a.checkedInAt || 0) - (b.checkedInAt || 0);
+    });
+    renderAll();
+});
+
+messagesRef.on('value', function(snapshot) {
+    var data = snapshot.val() || {};
+    messages = [];
+    var keys = Object.keys(data);
+    for (var i = 0; i < keys.length; i++) {
+        var m = data[keys[i]];
+        messages.push(m);
+    }
+    // Sort by time
+    messages.sort(function(a, b) {
+        return (a.time || 0) - (b.time || 0);
+    });
+    updateChatBtn();
+    if (chatVisible) renderChat();
+});
 
 // ========== INIT ==========
 var _now = new Date();
@@ -821,10 +905,8 @@ var _days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturd
 var _months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 document.getElementById('today-date').textContent = _days[_now.getDay()] + ', ' + _months[_now.getMonth()] + ' ' + _now.getDate();
 
-renderAll();
-
 // Update elapsed times every 60s
-setInterval(function() { saveAllNotes(); renderPatients(); }, 60000);
+setInterval(function() { safeRenderPatients(); }, 60000);
 </script>
 </body>
 </html>
